@@ -15,7 +15,7 @@ related:
 这个类就是负责**自动化地把硬盘上的图片读出来，打包好这些信息，交给模型**。
 
 `SAMPLE_Dataset` 类本身是通用的，不管是 DDPM、SNGAN 还是其他生成模型，数据加载部分完全一样。
-
+ 
 ## 核心问题：数据在哪里？长什么样？
 硬盘上的目录结构是这样的：
 ```
@@ -95,7 +95,7 @@ real/btr70/btr70_real_A_...azCenter_120_10_...png 2
 
 # 代码1
 （代码 1 来源：EM_deeplearning_beifen\DDPM\ddpm_model.py）
-## 初始化函数
+## `__init__`初始化函数
 `__init__` 做的事情就是：**统一数据加载入口 → 构建一个 `[路径, 标签]` 列表**。
 后续 `__getitem__` 只需按索引从这个列表取数据，不用关心数据来源是 txt 还是目录扫描。
 
@@ -109,32 +109,77 @@ class SAMPLE_Dataset(Dataset):
         """
         参数：
 			data_root：数据集根目录路径（如果使用 txt_file，则可选）
-			txt_file：txt 文件路径($path$ $label$)（如果使用 data_root，则可选）
+			txt_file：txt 文件路径(path, label)（如果使用 data_root，则可选）
 			transform：要应用于样本的可选转换
         """
 ```
 
-| 参数 | 类型 | 默认值 | 作用 |
-|------|------|--------|------|
-| `data_root` | `str` | `None` | 数据集根目录路径，内含按类别分好的子文件夹 |
-| `txt_file` | `str` | `None` | 预先生成的 txt 文件路径，每行记录图片路径和标签 |
+| 参数          | 类型         | 默认值    | 作用                                 |
+| ----------- | ---------- | ------ | ---------------------------------- |
+| `data_root` | `str`      | `None` | 数据集根目录路径，内含按类别分好的子文件夹              |
+| `txt_file`  | `str`      | `None` | 预先生成的 txt 文件路径，每行记录图片路径和标签         |
 | `transform` | `callable` | `None` | 图像预处理函数（如 `transforms.ToTensor()`） |
+### 有关Dataset
+`Dataset` 是从第3行导入的：
+```python
+from torch.utils.data import Dataset
+```
+它是 **PyTorch 的抽象基类** `torch.utils.data.Dataset`，不是参数，而是 `SAMPLE_Dataset` 继承的父类。
+在 Python 里，`class SAMPLE_Dataset(Dataset)` 的括号里是**父类列表**，表示 `SAMPLE_Dataset` 继承自 `Dataset`。
+PyTorch 要求==自定义数据集==必须继承这个类并实现两个方法：
+- `__len__` → 你的第96行
+- `__getitem__` → 你的第99行
+这样 `SAMPLE_Dataset` 就能被 `torch.utils.data.DataLoader` 直接使用。
 
+### 有关DataLoader
+`DataLoader` 是 PyTorch 的数据加载器，来自 `torch.utils.data.DataLoader`。
+Dataset 管"怎么读一个样本"，DataLoader 管"怎么攒一批样本"。
+核心作用：把 `Dataset`（你的 `SAMPLE_Dataset`）包装成**可批量迭代**的对象，自动帮你做：
+
+| 功能        | 说明                                                  |
+| --------- | --------------------------------------------------- |
+| **批量打包**  | 把多个样本堆叠成 batch tensor                               |
+| **随机打乱**  | `shuffle=True` 每 epoch 洗牌                           |
+| **多线程加载** | `num_workers` 并行读数据，不阻塞 GPU                         |
+| **自动批处理** | 通过 `collate_fn` 把 list of dict 合并成 batch of tensors |
+
+
+### transform属性：有关数据增强/预处理函数
 ```python
 		self.transform = transform
 ```
 把数据增强/预处理函数存为实例属性，供后面 `__getitem__` 使用。如果传了 `None`，`__getitem__` 里会走默认逻辑（手动转 tensor）。
 
+
+### classes属性
 ```python
 		self.classes = ['2s1', 'bmp2', 'btr70', 'm1', 'm2', 'm35', 'm60', 'm548', 't72', 'zsu23']
 ```
 这是 MSTAR SAR 数据集的标准 10 类军事目标。列表的**索引天然对应标签编号**：
 '2s1'→0, 'bmp2'→1, ..., 'zsu23'→9
 
+
+### class_to_idx属性
 ```python
 		self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(self.classes)}
 ```
-字典推导式，把上面的列表反过来映射。等价于：{
+
+字典推导式一行顶一个 for 循环。**推导式通用格式：**
+```python
+{key_expr(键): value_expr(值) for 变量 in 可迭代对象}
+```
+
+`enumerate()` 把列表变成 `(索引, 元素)` 的迭代器：
+
+| 迭代   | idx | cls_name  |
+| ---- | --- | --------- |
+| 第1轮  | 0   | `'2s1'`   |
+| 第2轮  | 1   | `'bmp2'`  |
+| 第3轮  | 2   | `'btr70'` |
+| ...  | ... | ...       |
+| 第10轮 | 9   | `'zsu23'` |
+
+最终得到：{
     '2s1': 0,
     'bmp2': 1,
     'btr70': 2,
@@ -149,6 +194,7 @@ class SAMPLE_Dataset(Dataset):
 **为什么需要这个？** `scan_dataset_directory` 遍历子目录时，目录名是字符串（如 `"bmp2"`），需要快速查到对应的数字标签 `1`。字典查找是 O(1)。
 
 
+### sample_path_label属性：`[图片路径, 标签]`列表
 ```python
 		if txt_file:                                          # 分支 A
 		    self.sample_path_label = self.read_dataset_txt(txt_file)
@@ -177,7 +223,7 @@ class SAMPLE_Dataset(Dataset):
 
 
 
-## 从文本文件读取
+## init方法1：从txt文件读取
 ```python
     def read_dataset_txt(self, txt_file):
         """Read dataset from txt file"""
@@ -194,7 +240,7 @@ class SAMPLE_Dataset(Dataset):
                     list_path_label.append([file_path, label])
         return list_path_label
 ```
-**文本文件格式**：
+**txt文件格式**：
 ```
 real/2s1/2s1_real_A_elevDeg_015_azCenter_060_22_serial_b01.png 0
 real/bmp2/bmp2_real_A_elevDeg_016_azCenter_035_49_serial_9563.png 1
@@ -202,26 +248,28 @@ real/bmp2/bmp2_real_A_elevDeg_016_azCenter_035_49_serial_9563.png 1
 ```
 每行：`图片路径 类别编号`
 
-## 从目录扫描
+## init方法2：从目录扫描
 ```python
 def scan_dataset_directory(self, data_root):
         """Scan dataset directory and extract all images with labels and azimuth angles"""
-        list_path_label_az = []
-        for class_name in self.classes:
-            class_dir = os.path.join(data_root, class_name)
-            if not os.path.exists(class_dir):
+        list_path_label = []  # 空列表，用来收集结果。每个元素是 `[文件路径, 数字标签]`。
+        for class_name in self.classes:  # 按固定顺序遍历10个类别，保证标签一致性
+            class_dir = os.path.join(data_root, class_name)  # 拼接路径
+            
+            if not os.path.exists(class_dir):  # 如果某个类别文件夹不存在，打印警告并跳过。这允许数据集不包含全部10类（比如只用部分类别训练）
                 print(f"Warning: Class directory {class_dir} does not exist")
                 continue
-            for filename in os.listdir(class_dir):
-                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    file_path = os.path.join(class_dir, filename)
-                    # Extract label
-                    label = self.class_to_idx[class_name]
-                    list_path_label_az.append([file_path, label])
-        return list_path_label_az
+                
+            for filename in os.listdir(class_dir): # 列出该类别文件夹下的所有文件名
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg')): #  过滤，只保留图片文件
+                    file_path = os.path.join(class_dir, filename) # 图片完整路径
+                    
+                    label = self.class_to_idx[class_name]  # 通过之前建的字典查表，提取标签
+                    list_path_label_az.append([file_path, label])  # 追加一条[路径, 标签]到结果列表
+                    
+        return list_path_label
 ```
-当用户传入 `data_root` 而非 `txt_file` 时调用。**从目录结构推断标签**，无需预先准备 txt 文件。
-预期的目录结构：
+当用户传入 `data_root` 而非 `txt_file` 时调用。**从目录结构推断标签**，无需预先准备 txt 文件。预期的目录结构：
 ```
 data_root/
 ├── 2s1/        → label = 0
@@ -237,9 +285,9 @@ data_root/
 ├── t72/        → label = 8
 └── zsu23/      → label = 9
 ```
-扫描过程：遍历 `self.classes` 中的每个类别名 → 进入对应子目录 → 收集所有图片文件 → 标签由目录名经 `class_to_idx` 映射得到。
+扫描过程：遍历 `self.classes` 中的每个类别名 → 进入对应子目录 → 收集所有图片文件及其完整路径 → 标签由目录名经 `class_to_idx` 映射得到。
 
-方式对比**：
+方式对比：
 
 |方式|优点|缺点|
 |---|---|---|
@@ -261,13 +309,13 @@ data_root/
         if match:
             degrees_part = match.group(1)  # e.g., '010'
             decimal_part = match.group(2)  # e.g., '22'
-            # Convert to float: degrees_part + decimal_part/100
+            # 转换为浮点数：度数部分 + 小数部分 / 100
             azimuth = float(degrees_part) + float(decimal_part) / 100.0
             return azimuth
         else:
-            # If no azimuth found, return random azimuth between 0-360
+            # 如果未找到方位角，则返回 0-360 之间的随机方位角。
             print(f"Warning: No azimuth found in filename {filename}, using random azimuth")
-            return float(np.random.uniform(0, 360))
+            return float(np.random.uniform(0, 360))  # np.random.uniform(0, 360)返回一个numpy.float64标量，外层float()把它转成Python原生的float类型。
 ```
 **文件名解析示例**：
 ```

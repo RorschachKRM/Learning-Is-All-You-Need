@@ -1,9 +1,10 @@
 ---
-title: extract辅助函数
+title: extract提取函数
 tags:
   - DDPM
   - Diffusion-Model
   - Broadcasting
+  - Extract
 related:
   - "[[DDPM - Broadcasting]]"
 ---
