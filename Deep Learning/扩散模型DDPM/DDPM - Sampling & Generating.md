@@ -19,6 +19,27 @@ related:
 整个 `main()` 函数是一个**用训练好的条件 DDPM 模型生成图像的推理脚本**
 
 ```
+# 整体架构
+main()
+ ├── 1. 解析命令行参数
+ ├── 2. 创建保存目录
+ ├── 3. 选择设备 (CPU/GPU)
+ ├── 4. 构建 Dataset + DataLoader（从 txt 读取条件）
+ ├── 5. 构建 ConditionalUNet 模型
+ ├── 6. 加载 checkpoint 权重 + 切换到 eval 模式
+ ├── 7. 构建扩散参数 (betas, alphas_cumprod 等)
+ ├── 8. 预计算 one-hot 模板（预计算 10 个类别的 one-hot 矩阵）
+ ├── 9. 循环每个 batch:
+ │    ├── 从 dataset 取 label + azimuth
+ │    ├── 构造条件向量 (class one-hot + azimuth 正弦编码)
+ │    ├── 调用 sample_ddpm() 从纯噪声逐步去噪生成图片
+ │    ├── 像素值从 [-1,1] 映射到 [0,1]
+ │    ├── 逐张保存到 class_dir/name_az.png
+ │    └── 释放显存缓存
+ └── 10. 打印完成信息
+```
+
+```
 # 整体数据流总结
 测试txt文件 → SAMPLE_Dataset → DataLoader
                                 ↓
@@ -54,9 +75,16 @@ args = parser.parse_args()
 os.makedirs(args.save_dir, exist_ok=True)        # 创建保存目录
 device = torch.device("cuda" if ... else "cpu")   # 自动选择 GPU/CPU
 
-data_transforms = transforms.Compose([transforms.ToTensor()])  # 只做 ToTensor，无归一化
-dataset_test = sample_dataset.SAMPLE_Dataset(...)               # 加载测试集
-test_loader = DataLoader(dataset_test, batch_size=..., shuffle=False)
+# 只做 ToTensor，无归一化
+data_transforms = transforms.Compose([transforms.ToTensor()])  
+
+# 加载测试集
+dataset_test = sample_dataset.SAMPLE_Dataset(        
+	txt_file=args.txt_file,
+	transform=data_transforms,) 
+
+# 加载测试dataloader
+test_loader = DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False)
 ```
 关键点：
 - `transform` 只有 `ToTensor()`，没有 `Normalize`——因为 DDPM 在 `[-1, 1]` 范围工作，后续生成后再手动映射到 `[0, 1]`
@@ -67,9 +95,12 @@ test_loader = DataLoader(dataset_test, batch_size=..., shuffle=False)
 ```python
 model = ConditionalUNet(img_channels=1, base_ch=64, time_dim=256, cond_dim=64).to(device)
 
+# 从磁盘加载训练时保存的模型权重文件（checkpoint）
+# torch.load()：PyTorch的反序列化函数，使用pickle将.pkl文件还原为 Python 对象（通常是一个即state_dict）：
 state_dict = torch.load(args.ckpt, map_location=device)
+# 将加载的权重参数赋值给模型。load_state_dict()：按参数名一一匹配，将state_dict中的每一层权重和偏置拷贝到model对应层的.data中：
 model.load_state_dict(state_dict)
-model.eval()
+model.eval() # 将模型切换到评估/推理模式
 ```
 - `img_channels=1` → 灰度图（单通道）
 - `base_ch=64` → 基础通道数
@@ -107,6 +138,9 @@ onehot.scatter_(1, indices, 1)                # 对角线置1
 
 print(f"Total test samples: {len(dataset_test)}")
 
+"""
+for循环会自动遍历 DataLoader 的所有batch，即运行一次就会把 txt 里所有条目的条件都生成一遍
+"""
 for batch_idx, data in enumerate(test_loader):
 	labels = data["label"].to(device)  # (B,)
 	az = data["az"].to(device)  # degrees, (B,)
@@ -162,7 +196,7 @@ samples = (samples + 1.0) / 2.0       # 映射到 [0, 1]
 3. 用预测的噪声和扩散系数计算 `x_{t-1}`
 4. 最终输出 `x_0`，值域 `[-1, 1]`
 5. 通过 `(x+1)/2` 映射到 `[0, 1]`，方便 `save_image` 保存
-
+x
 
 ### 保存图像
 ```python

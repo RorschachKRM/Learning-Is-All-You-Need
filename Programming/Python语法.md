@@ -9,11 +9,68 @@ related:
 
 `class` 是创建对象的模板。方法就是定义在类里面的函数。
 
+定义类后面的括号内是==父类（继承）==
+告诉 Python：这个类的**爸爸是谁**，继承父类的所有方法和属性。
 ```python
-class Dog:
-    def bark(self):
-        print("汪汪")
+class Dog(Animal):          # Dog 继承 Animal
+    pass
+
+class SAMPLE_Dataset(Dataset):  # SAMPLE_Dataset 继承 Dataset
+    pass
 ```
+
+没括号的情况
+```python
+class SimpleClass:        # 没写括号 = 隐式继承 object
+    pass
+```
+所有自定义类最终都追溯到 `object`。
+
+### 抽象基类（Abstract Base Class，ABC）
+**抽象基类 = 只定义接口，不实现（或只实现通用部分），子类必须填空。**
+相关的叫法：
+
+| 名称                    | 含义                                              |
+| --------------------- | ----------------------------------------------- |
+| **抽象基类 / ABC**        | 包含未实现方法的类，不能直接实例化                               |
+| **接口 / Interface**    | 只规定方法签名，完全没有实现（Python 没有原生 interface，Java/C# 有） |
+| **父类 / Parent Class** | 通用的叫法，不限于抽象还是具体                                 |
+| **超类 / Superclass**   | 同父类，更学术的说法                                      |
+
+例如`Dataset` 是 PyTorch 定义好的**抽象基类**，它规定了一套"接口契约"：
+```python
+# Dataset 的契约
+class Dataset(object):
+    def __getitem__(self, index):
+        raise NotImplementedError   # 子类必须覆盖
+
+    def __len__(self):
+        raise NotImplementedError   # 子类必须覆盖
+
+    def __add__(self, other):       # 已实现，支持 dataset1 + dataset2 拼接
+        return ConcatDataset([self, other])
+
+```
+
+```python
+# 你只需要实现两个方法，剩下的 PyTorch 全包了：
+class SAMPLE_Dataset(Dataset):
+    def __len__(self):          # ← 必须实现：告诉 DataLoader 有多少样本
+        return len(self.sample_path_label)
+
+    def __getitem__(self, idx): # ← 必须实现：告诉 DataLoader 第 idx 个样本是什么
+        # 读图、转tensor、返回
+        return sample
+```
+PyTorch 拿到这两个后替你做的事:
+- `DataLoader` 在循环时自动 `for i in range(len(dataset))` → `dataset[i]`
+- 多线程加载：每个 worker 各持一份 dataset，各自调 `__getitem__`
+- 可以 `dataset_a + dataset_b` 拼接两个数据集（`__add__` 已在父类实现）
+- 可以用 `Subset(dataset, [0,1,5])` 切片
+
+本质上就是模板方法模式：框架定好骨架，你填两个方法即可。 这就是面向对象里"面向接口编程"的体现。
+
+PyTorch 的 `Dataset` 实际上没用到 `abc` 模块，而是用了"鸭子类型"——只要你实现了 `__len__` 和 `__getitem__`，不管是否显式继承 `Dataset`，DataLoader 都能用。但继承它是一种**声明意图**，让代码更清晰。
 
 ## 2. 调用类里面的方法
 
@@ -317,3 +374,97 @@ print(get_score())  # 输出 85.0（原函数返回8.5，被装饰器乘了10）
 
 
 
+## 9. `__Func__`——魔术方法
+`__Func__`（双下划线包裹）这样的函数/方法，统称为**特殊方法（Special Methods）**，更通俗的叫法是**魔术方法（Magic Methods）**
+
+它们不是让你直接调用的普通函数，而是**Python 内部协议的钩子**。当你对对象使用特定的语法或内置函数时，Python 解释器会自动去调用对应的特殊方法。
+
+### 1. 核心特征（怎么用）
+
+- **无需手动调用**：你几乎不会写 `obj.__add__(other)`，而是写 `obj + other`。
+- **由解释器触发**：`len(obj)` 触发 `obj.__len__`，`print(obj)` 触发 `obj.__str__`。
+- **定义在类内部**：用于让自定义类的实例表现得像内置类型（如列表、字符串、数字）一样。
+
+### 2. 常见分类
+
+|类别|常见方法|触发时机|
+|---|---|---|
+|**对象生命周期**|`__new__`, `__init__`|创建和初始化实例（`Class()`）|
+|**销毁**|`__del__`|对象被垃圾回收时|
+|**字符串/字节表示**|`__str__`, `__repr__`|`print()` 或 `str()`；交互式环境直接显示|
+|**算术运算符**|`__add__` (+), `__sub__` (-), `__mul__` (*)|对象进行数学运算时|
+|**比较运算符**|`__eq__` (==), `__lt__` (<), `__gt__` (>)|对象比较大小或排序时|
+|**容器/序列协议**|`__len__`, `__getitem__` (索引), `__setitem__` (赋值)|`len()`、`obj[key]`、`for` 循环迭代|
+|**可调用对象**|`__call__`|把实例当作函数调用（`obj()`）|
+|**上下文管理**|`__enter__`, `__exit__`|`with` 语句块|
+|**属性访问**|`__getattr__`, `__setattr__`|获取或设置不存在的属性时|
+
+### 3. 代码演示
+```python
+class Vector:
+    def __init__(self, x, y):          # 构造
+        self.x = x
+        self.y = y
+
+    def __add__(self, other):          # 重载 + 号
+        return Vector(self.x + other.x, self.y + other.y)
+
+    def __str__(self):                 # 重载 print()
+        return f"Vector({self.x}, {self.y})"
+
+    def __len__(self):                 # 重载 len()
+        return 2
+
+    def __call__(self, scale):         # 让实例可调用
+        return Vector(self.x * scale, self.y * scale)
+
+# 使用演示
+v1 = Vector(1, 2)
+v2 = Vector(3, 4)
+
+v3 = v1 + v2          # 自动触发 __add__
+print(v3)             # 自动触发 __str__  -> 输出: Vector(4, 6)
+print(len(v3))        # 自动触发 __len__  -> 输出: 2
+
+v4 = v3(2)            # 自动触发 __call__ -> 相当于把向量放大2倍
+print(v4)             # 输出: Vector(8, 12)
+```
+
+
+
+# 10. enumerate()
+`enumerate()` 是 Python 的内置函数，它将一个可迭代对象（如列表、字符串、元组等）包装成一个**枚举对象**，在迭代时同时产出 `(索引, 元素)` 对。
+```python
+enumerate(iterable, start=0)
+# iterable：可迭代对象（必填）
+# start：索引起始值，默认为 `0`（可选）
+```
+
+❌ **没有 enumerate 的写法**（手动维护计数器）：
+```python
+fruits = ["苹果", "香蕉", "橙子"]
+
+i = 0
+for fruit in fruits:
+    print(i, fruit)
+    i += 1
+```
+
+✅ **使用 enumerate**（简洁且 Pythonic）：
+```python
+fruits = ["苹果", "香蕉", "橙子"]
+
+for i, fruit in enumerate(fruits):  # for后的变量名可随便取，个数必须匹配
+    print(i, fruit)
+
+# 输出:
+# 0 苹果
+# 1 香蕉
+# 2 橙子
+```
+
+```python
+# ❌ 错误：只用了一个变量，拿到的是整个元组
+for x in enumerate(fruits):
+    print(x)           # (0, '苹果')  → 不是你想要的效果
+```

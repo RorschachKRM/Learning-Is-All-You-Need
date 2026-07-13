@@ -223,7 +223,7 @@ Dataset 管"怎么读一个样本"，DataLoader 管"怎么攒一批样本"。
 
 
 
-## init方法1：从txt文件读取
+## init方法1：从txt文件读取解析
 ```python
     def read_dataset_txt(self, txt_file):
         """Read dataset from txt file"""
@@ -240,7 +240,7 @@ Dataset 管"怎么读一个样本"，DataLoader 管"怎么攒一批样本"。
                     list_path_label.append([file_path, label])
         return list_path_label
 ```
-**txt文件格式**：
+所需的**txt文件格式**：
 ```
 real/2s1/2s1_real_A_elevDeg_015_azCenter_060_22_serial_b01.png 0
 real/bmp2/bmp2_real_A_elevDeg_016_azCenter_035_49_serial_9563.png 1
@@ -248,7 +248,7 @@ real/bmp2/bmp2_real_A_elevDeg_016_azCenter_035_49_serial_9563.png 1
 ```
 每行：`图片路径 类别编号`
 
-## init方法2：从目录扫描
+## init方法2：从目录扫描解析
 ```python
 def scan_dataset_directory(self, data_root):
         """Scan dataset directory and extract all images with labels and azimuth angles"""
@@ -329,7 +329,7 @@ data_root/
 - 如果提取失败，返回随机角度作为降级方案
 
 
-## 数据集大小
+## `__len__`数据集大小
 ```python
     def __len__(self): 
         return len(self.sample_path_label)
@@ -337,7 +337,7 @@ data_root/
 返回数据集样本总数。`DataLoader` 通过它知道要迭代多少次。
 
 
-## 获取单个样本
+## `__getitem__`获取单个样本
 ```python
 	def __getitem__(self, idx):
 	        """
@@ -350,29 +350,35 @@ data_root/
 	        file_path = self.sample_path_label[idx][0]
 	        label = self.sample_path_label[idx][1]
 	        
-	        # 提取不带扩展名的文件名
+	        
+	        '''提取不带扩展名的文件名'''
+	        # 从完整路径中提取纯文件名
 	        filename = os.path.basename(file_path)
+	        # 去掉 .png 后缀，取其主名
 	        name = os.path.splitext(filename)[0]
 	        
-	        # 从文件名中提取方位角
+	        
+	        '''从文件名中提取方位角'''
 	        az = self.extract_azimuth_from_filename(filename)
 	        
-	        # 加载和处理图像
+	        
+	        '''加载、处理图像'''
 	        try:
-	            # Load PNG image
-	            image = Image.open(file_path).convert('L')  # 转换为灰度图
-	            # 转换为 numpy 数组并归一化到 [0, 1] 区间
+	            image = Image.open(file_path).convert('L')  #.convert('L')：把图像转为灰度图
+	            
+	            # np.array(image, dtype=np.float32)：把 PIL Image 转成 numpy 数组，dtype 指定为 float32。灰度图的 shape 是(128, 128)。/ 255.0是归一化至[0.0, 1.0]。
 	            img_array = np.array(image, dtype=np.float32) / 255.0
-	            # 如果指定，则应用transform
+	            
+	            # 用户传入自定义处理函数，比如torchvision.transforms.Compose可以做随机裁剪、翻转等数据增强。此时 transform 的输入是numpy 数组，shape(128, 128)。
 	            if self.transform:
 	                img_array = self.transform(img_array)
 	            else:
-	                # 默认值：转换为张量
-	                img_array = torch.from_numpy(img_array).unsqueeze(0)  # Add channel dimension
+	                # torch.from_numpy(img_array)：numpy → PyTorch tensor，shape 仍是(128, 128)。.unsqueeze(0)：在第0维插入一个维度，shape 变成(1, 128, 128)，即(C, H, W)格式，1 表示灰度图的单通道
+	                img_array = torch.from_numpy(img_array).unsqueeze(0)
 	                
 	        except Exception as e:
 	            print(f"Error loading image {file_path}: {e}")
-	            # 如果出错，则返回虚拟数据。
+	            # 如果图片损坏或读取失败，返回一张全黑图和方位角0.0，不让整个训练崩溃
 	            img_array = torch.zeros((1, 128, 128))  # 根据需要调整尺寸
 	            az = 0.0
 	        
@@ -385,11 +391,22 @@ data_root/
 	        
 	        return sample
 ```
+
 **步骤**：
 1. 从 `sample_path_label` 获取文件路径和标签
 2. 用 `PIL.Image.open(file_path).convert('L')` 加载为灰度图
 3. 转换为 numpy 数组并归一化到 [0, 1]
 4. 应用 transform（如 `ToTensor()`）
+```
+磁盘图片
+  │ PIL 读取，转 numpy          ← numpy 用来做像素级别的预处理
+  │ np.array() / 255.0           (CPU 上算足够，不需要 GPU)
+  │
+  │ torch.from_numpy()          ← 转成 tensor，从此进入 PyTorch 世界
+  │ .unsqueeze(0)               (GPU 上跑模型必须用 tensor)
+  ▼
+DDPM 模型（tensor 计算图 → GPU 训练 → 自动求梯度）
+```
 5. 从文件名提取方位角
 6. 返回字典 `{'image', 'name', 'label', 'az'}`
 ```python
@@ -401,18 +418,38 @@ sample = {
 }
 ```
 
+### 有关idx
+
+`idx` 是一个**整数索引**，是 Python 的 `__getitem__` 魔术方法的参数。
+
+作用：当你用 `dataset[0]`、`dataset[5]` 这样的方括号语法访问数据集时，`idx` 就是方括号里那个数字。
+
+在这个类中的具体用途
+```python
+file_path = self.sample_path_label[idx][0]   # 第107行
+label = self.sample_path_label[idx][1]        # 第108行
+```
+`self.sample_path_label` 是一个二维列表，每个元素是 `[文件路径, 标签]` 这样的二元组。`idx` 就是从中选取第几个样本。`[0]、[1]`就代表每个样本的元素。
+
+|表达式|结果|
+|---|---|
+|`self.sample_path_label[idx]`|取出第 idx 个样本的整个列表，如 `["/path/to/img.png", 3]`|
+|`self.sample_path_label[idx][0]`|取该列表的**第0个元素** → 文件路径|
+|`self.sample_path_label[idx][1]`|取该列表的**第1个元素** → 标签|
+
+调用者：这个 `__getitem__` 不是手动调用的，而是由 **PyTorch 的 `DataLoader`** 在遍历数据集时自动调用。`DataLoader` 会根据 batch size 和 sampler 自动生成一批索引，逐个传入 `__getitem__` 来加载对应的数据样本。
 
 
 
 ## 生成数据集 txt 文件
 ```python
-# Utility function to create dataset txt file 创建数据集txt文件的实用函数
+# 创建数据集txt文件的实用函数
 def create_sample_txt_file(data_root, output_txt):
     """
-    Create a txt file for SAMPLE dataset in the same format as MSTAR
-    Args:
-        data_root: root directory of SAMPLE dataset
-        output_txt: output txt file path
+	为 SAMPLE 数据集创建一个与 MSTAR 格式相同的 txt 文件
+	参数：
+		data_root：SAMPLE 数据集的根目录
+		output_txt：输出 txt 文件路径
     """
 
     dataset = SAMPLE_Dataset(data_root=data_root)
@@ -439,12 +476,13 @@ real/bmp2/bmp2_real_A_elevDeg_016_azCenter_035_49_serial_9563.png 1
 ## 模块入口 — 独立运行示例
 ```python
 if __name__ == '__main__':
-    # Example usage
+    # 用法示例
     data_root = r"D:\taojiawei\tjw\Deep_Learning\EM_deeplearning\dataset\SAMPLE\png_images\qpm\real"
     
-    # Create train and test txt files
+    # 创建训练集和测试集的txt文件
     create_sample_txt_file(data_root, '../data/sample_train.txt')
-    # Test the dataset
+    
+    # 测试数据集
     dataset = SAMPLE_Dataset(data_root=data_root)
     print(f"Dataset size: {len(dataset)}")
     if len(dataset) > 0:
