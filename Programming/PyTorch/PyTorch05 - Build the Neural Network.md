@@ -50,7 +50,7 @@ print(f"Using {device} device")
 
 
 
-# 定义类
+# 定义NeuralNetwork类
 
 我们通过继承 `nn.Module` 来定义神经网络，并在 `__init__` 中初始化神经网络层。
 每个 `nn.Module` 的子类都会在 `forward` 方法中实现对输入数据的操作。
@@ -144,7 +144,7 @@ y_pred [1]            预测类别的编号
 
 ---
 
-# 模型层
+# 解析模型各层
 
 让我们拆解一下 FashionMNIST 模型中的各层。
 为了说明这一点，我们将取一个包含 3 张 28x28 图像的小批量样本，看看当它通过网络时会发生什么。
@@ -184,16 +184,33 @@ print(hidden1.size())
 torch.Size([3, 20])
 ```
 
+### logits
+模型的原始输出 （称为 logits，未经激活函数处理）
+
+
 ## nn.ReLU
 
 非线性激活函数是创建模型输入和输出之间复杂映射的关键。它们在线性变换之后应用，引入了 *非线性* ，帮助神经网络学习各种复杂现象。
 
 在此模型中，我们在线性层之间使用 [nn.ReLU](https://pytorch.ac.cn/docs/stable/generated/torch.nn.ReLU.html) ，但还有其他激活函数可用于在模型中引入非线性。
-
 ```python
 print(f"Before ReLU: {hidden1}\n\n")
 hidden1 = nn.ReLU()(hidden1)
 print(f"After ReLU: {hidden1}")
+
+
+"""
+解析：nn.ReLU()(hidden1)。这是两步操作合写成了一行。
+等价两步写法：
+	relu = nn.ReLU()          # 第 1 步：创建一个 ReLU 层对象
+	hidden1 = relu(hidden1)   # 第 2 步：把数据传给这个对象
+所有nn.Module的子类都实现了__call__方法，所以它们的实例可以像函数一样被调用：
+	nn.ReLU()          # 这是一个对象（nn.Module 的实例）
+	nn.ReLU()(x)       # 对象(x) → 触发 __call__ → 执行 
+
+一次性使用 → 合写（教程演示时图方便）
+反复使用 / 正式代码 → 放进网络Sequential里定义
+""""
 ```
 
 ```
@@ -218,10 +235,12 @@ After ReLU: tensor([[0.0000, 0.0000, 0.2111, 0.0000, 0.2408, 0.0319, 0.1608, 0.0
          0.0000, 0.0000]], grad_fn=<ReluBackward0>)
 ```
 
+
 ## nn.Sequential
 
-[nn.Sequential](https://pytorch.ac.cn/docs/stable/generated/torch.nn.Sequential.html) 是一个有序的模块容器。数据按照定义的顺序通过所有模块。你可以使用顺序容器来快速组装像 `seq_modules` 这样的网络。
-
+[nn.Sequential](https://pytorch.ac.cn/docs/stable/generated/torch.nn.Sequential.html) 是一个有序的模块容器。
+数据按照定义的顺序通过所有模块。
+你可以使用顺序容器来快速组装像 `seq_modules` 这样的网络。
 ```python
 seq_modules = nn.Sequential(
     flatten,
@@ -236,18 +255,18 @@ logits = seq_modules(input_image)
 ## nn.Softmax
 
 神经网络的最后一层线性层返回 logits （即 \[-无穷, +无穷\] 范围内的原始值），这些值被传递给 [nn.Softmax](https://pytorch.ac.cn/docs/stable/generated/torch.nn.Softmax.html) 模块。Logits 被缩放为 \[0, 1\] 范围内的值，代表模型对每个类别的预测概率。 `dim` 参数表示数值必须相加为 1 的维度。
-
 ```python
 softmax = nn.Softmax(dim=1)
 pred_probab = softmax(logits)
 ```
 
+
 # 模型参数
 
-神经网络中的许多层都是 *参数化的* ，即拥有在训练过程中优化的权重和偏置。继承 `nn.Module` 会自动跟踪模型对象内定义的所有字段，并使得所有参数都可以通过模型的 `parameters()` 或 `named_parameters()` 方法进行访问。
+神经网络中的许多层都是 *参数化的* ，即拥有在训练过程中优化的权重和偏置。
+继承 `nn.Module` 会自动跟踪模型对象内定义的所有字段，并使得**所有参数**都可以通过模型的 `parameters()` 或 `named_parameters()` 方法进行访问。
 
 在此示例中，我们遍历每个参数，并打印其大小及其值的预览。
-
 ```python
 print(f"Model structure: {model}\n\n")
 

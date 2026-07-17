@@ -12,7 +12,7 @@ related:
   - "[[DDPM - Training]]"
   - "[[DDPM - Broadcasting]]"
   - "[[DDPM - Sampling & Generating]]"
-  - "[[DDPM - Loss Function]]"
+  - "[[Loss Function]]"
   - "[[DDPM - sample_ddpm function]]"
   - "[[DDPM - sample_dataset]]"
 ---
