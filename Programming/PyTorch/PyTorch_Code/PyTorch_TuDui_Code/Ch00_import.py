@@ -1,3 +1,59 @@
+"""
+os
+    path
+        join()
+
+
+numpy as np
+    .array()
+
+PIL
+    Image
+        .open()
+
+cv2
+    .imread()
+
+
+torch
+    .tensor()
+    utils
+        dataset
+            Dataset
+            DataLoader
+        tensorboard
+            SummaryWriter
+                add_image()
+                add_images()
+                dd_graph()
+    nn
+        Module
+        Flatten()
+        Conv2d()
+        MaxPool2d()
+        ReLU()
+        Sigmoid()
+        BatchNorm2d()
+        GroupNorm()
+        LayerNorm()
+        Linear()
+        Dropout()
+        Sequential()
+        functional
+            relu()
+
+
+torchvision
+    dataset
+        CIFA10()
+    transforms
+        ToTensor()
+        Normalize()
+        Compose()
+        Resize()
+
+"""
+
 
 import os
     # os.path.join()
@@ -34,5 +90,8 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
     # nn.Module
     # nn.Conv2d()
+    # nn.MaxPool2d()
+    # nn.ReLu()
+    # nn.Sigmoid()
 import torch.nn.functional as F
-    # F.relu()
+    # F.ReLu()
