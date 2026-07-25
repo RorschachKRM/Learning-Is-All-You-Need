@@ -28,29 +28,47 @@ torch
                 dd_graph()
     nn
         Module
+
         Flatten()
         Conv2d()
         MaxPool2d()
+
         ReLU()
         Sigmoid()
+
         BatchNorm2d()
         GroupNorm()
         LayerNorm()
+
         Linear()
+
         Dropout()
+
         Sequential()
+
+        MSELoss()
+        CrossEntropyLoss()
+
         functional
             relu()
+    optim
+        SGD()
+        Adam()
+    save()
+    load()
 
 
 torchvision
-    dataset
+    .dataset
         CIFA10()
-    transforms
+    .transforms
         ToTensor()
         Normalize()
         Compose()
         Resize()
+    .model
+        .vgg16()
+        VGG16_Weights
 
 """
 
