@@ -69,6 +69,7 @@ torchvision
     .model
         .vgg16()
         VGG16_Weights
+            .DEFAULT
 
 """
 
