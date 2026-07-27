@@ -1,103 +1,90 @@
-from pathlib import Path
+import time
+
 import torch
-import torchvision
-from torch.utils.data import DataLoader
-from model import EasyNN
-import torch.nn as nn
+from torch import nn
 from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
 
-ROOT = Path(__file__).parent.parent
-CHECKPOINT_DIR = Path(__file__).parent / "checkpoints"
-CHECKPOINT_DIR.mkdir(exist_ok=True)
-
-# 准备数据集
-transform_train = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465),
-                         (0.2023, 0.1994, 0.2010)),
-])
-transform_test = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465),
-                         (0.2023, 0.1994, 0.2010)),
-])
-train_dataset = torchvision.datasets.CIFAR10(ROOT / "CIFAR10", train=True, transform=transform_train, download=False)
-test_dataset = torchvision.datasets.CIFAR10(ROOT / "CIFAR10", train=False, transform=transform_test, download=False)
-
-# 数据集数量
-train_dataset_length = len(train_dataset)
-test_dataset_length = len(test_dataset)
-print("训练数据集数量：{}".format(train_dataset_length))
-print("测试数据集数量：{}".format(test_dataset_length))
-
-# 准备dataloader
-train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-test_dataloader = DataLoader(test_dataset, batch_size=64)
+from config import (
+    BEST_CHECKPOINT_PATH,
+    EPOCHS,
+    LEARNING_RATE,
+    LOG_DIR,
+    LOG_INTERVAL,
+    RANDOM_SEED,
+)
+from data.dataset import build_train_val_dataloaders
+from models.easy_nn import EasyNN
+from utils.checkpoint import save_checkpoint
+from utils.evaluate import evaluate
+from utils.train_epoch import train_one_epoch
 
 
-MyNN = EasyNN()
-loss_fn = nn.CrossEntropyLoss()
-learning_rate = 1e-2
-optimizer = torch.optim.SGD(MyNN.parameters(), lr=learning_rate)
+def main():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.manual_seed(RANDOM_SEED)
+    if device.type == "cuda":
+        torch.cuda.manual_seed_all(RANDOM_SEED)
 
-total_train_step = 0
-total_test_step = 0
+    print(f"使用设备：{device}")
+    if device.type == "cuda":
+        print(f"GPU 型号：{torch.cuda.get_device_name(0)}")
 
-epoch = 10
+    train_loader, val_loader = build_train_val_dataloaders()
+    print(f"训练集数量：{len(train_loader.dataset)}")
+    print(f"验证集数量：{len(val_loader.dataset)}")
 
-writer = SummaryWriter(str(ROOT / "logs_CIFAR10"))
+    model = EasyNN().to(device)
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=LEARNING_RATE)
+    writer = SummaryWriter(str(LOG_DIR))
 
-for i in range(epoch):
-    print("--------第 {} epoch训练开始------".format(i+1))
+    best_val_accuracy = -1.0
+    global_step = 0
+    start_time = time.time()
 
-    MyNN.train()
-    for data in train_dataloader:
-        imgs, targets = data
+    try:
+        for epoch in range(EPOCHS):
+            train_metrics, global_step = train_one_epoch(
+                model,
+                train_loader,
+                loss_fn,
+                optimizer,
+                device,
+                start_step=global_step,
+                writer=writer,
+                log_interval=LOG_INTERVAL,
+            )
+            val_metrics = evaluate(model, val_loader, loss_fn, device)
 
-        outputs = MyNN(imgs)
-        train_loss = loss_fn(outputs, targets)
+            print(
+                f"Epoch {epoch + 1}/{EPOCHS} | "
+                f"train loss: {train_metrics['loss']:.4f}, "
+                f"train acc: {train_metrics['accuracy']:.2%} | "
+                f"val loss: {val_metrics['loss']:.4f}, "
+                f"val acc: {val_metrics['accuracy']:.2%}"
+            )
+            writer.add_scalar("train/epoch_loss", train_metrics["loss"], epoch + 1)
+            writer.add_scalar("train/epoch_accuracy", train_metrics["accuracy"], epoch + 1)
+            writer.add_scalar("val/loss", val_metrics["loss"], epoch + 1)
+            writer.add_scalar("val/accuracy", val_metrics["accuracy"], epoch + 1)
 
-        # 优化模型
-        optimizer.zero_grad()
-        train_loss.backward()
-        optimizer.step()
+            if val_metrics["accuracy"] > best_val_accuracy:
+                best_val_accuracy = val_metrics["accuracy"]
+                save_checkpoint(
+                    BEST_CHECKPOINT_PATH,
+                    model,
+                    optimizer,
+                    epoch=epoch + 1,
+                    best_val_accuracy=best_val_accuracy,
+                )
+                print(f"已保存最佳模型：{BEST_CHECKPOINT_PATH}")
+    finally:
+        writer.close()
 
-        total_train_step += 1
-        if total_train_step % 100 ==0:
-            print("当前训练次数:{}, Loss:{}".format(total_train_step, train_loss.item()))
-            writer.add_scalar("train_Loss", train_loss.item(), total_train_step)
-
-
-    MyNN.eval()
-    total_test_loss = 0
-    total_accuracy = 0
-    with torch.no_grad():
-        for data in test_dataloader:
-            imgs, targets = data
-
-            outputs = MyNN(imgs)
-            test_loss = loss_fn(outputs, targets)
-            total_test_loss += test_loss.item() * imgs.size(0) # 所有样本的 loss 之和
-
-            accuracy = (outputs.argmax(1) == targets).sum()
-            total_accuracy += accuracy.item()
-
-    avg_test_loss = total_test_loss / test_dataset_length
-    accuracy_rate = total_accuracy / test_dataset_length
-
-    print("测试集上Loss：{}".format(avg_test_loss))
-    print("测试集上Accuracy：{}".format(accuracy_rate))
-    writer.add_scalar("test_loss", avg_test_loss, total_test_step)
-    writer.add_scalar("test_accuracy", accuracy_rate, total_test_step)
-    total_test_step = total_test_step + 1
+    print(f"训练完成，用时：{time.time() - start_time:.1f}s")
+    print(f"最佳验证准确率：{best_val_accuracy:.2%}")
 
 
-    state_dict_path = CHECKPOINT_DIR / "MyNN_{}.pth".format(i)
-    torch.save( MyNN.state_dict(), state_dict_path)
-    print("模型已保存")
-
-writer.close()
+if __name__ == "__main__":
+    main()
 
