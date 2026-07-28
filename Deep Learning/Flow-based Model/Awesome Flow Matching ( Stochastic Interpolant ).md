@@ -1,22 +1,9 @@
-# Awesome Flow Matching ( Stochastic Interpolant )
-
-
-
-[![Star History Chart](https://api.star-history.com/svg?repos=dongzhuoyao/awesome-flow-matching&type=Date)](https://star-history.com/#dongzhuoyao/awesome-flow-matching&Date)
-# Contributors
-
-
-
-
-<!-- readme: collaborators,contributors -end -->
-
-<a href="https://github.com/dongzhuoyao/awesome-flow-matching/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=dongzhuoyao/awesome-flow-matching" />
-</a>
-
-
-
-
+---
+source: https://github.com/dongzhuoyao/awesome-flow-matching.git
+tags:
+  - Flow-Matching
+  - Papers
+---
 # Papers
 
 **Flow Matching for Generative Modeling**\
