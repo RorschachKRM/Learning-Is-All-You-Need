@@ -6,6 +6,7 @@ tags:
   - Cross-Entropy
 related:
   - "[[DDPM - General Framework#7.4 损失函数变体]]"
+  - "[[概率论]]"
 ---
 # MSE
 
