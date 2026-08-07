@@ -7,7 +7,7 @@ tags:
   - PDE
 related:
   - "[[Flow Model]]"
-  - "[[Flow Matching]]"
+  - "[[Flow Matching理论与实践思维导图]]"
   - "[[ODE (Ordinary differential equations, 常微分方程)]]"
 ---
 
@@ -306,7 +306,7 @@ $$
 
 ### Flow Matching
 
-[[Flow Matching]] 先选定一条概率路径 $(p_t)$，再学习能使其满足连续性方程的速度场 $u_t$：
+[[Flow Matching理论与实践思维导图]] 先选定一条概率路径 $(p_t)$，再学习能使其满足连续性方程的速度场 $u_t$：
 
 $$
 \text{选定 }p_t

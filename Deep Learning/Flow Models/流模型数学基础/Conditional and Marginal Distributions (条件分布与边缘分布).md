@@ -5,7 +5,7 @@ tags:
   - Flow-Matching
   - Mathematics
 related:
-  - "[[Flow Matching]]"
+  - "[[Flow Matching理论与实践思维导图]]"
   - "[[Continuity Equation (连续性方程)]]"
   - "[[Flow Model]]"
 ---
@@ -16,7 +16,7 @@ related:
 > **条件对象描述“已知样本来自哪个条件时会怎样”；边缘对象则把条件变量隐藏并加权混合，描述所有条件共同形成的总体。**
 
 > [!important] 本文范围
-> 本文只整理理解 [[Flow Matching]] 所需的条件分布、边缘分布、概率路径和速度场概念。“边缘”是 marginal 的翻译，表示对其他变量求和或积分，并不是空间边界。
+> 本文只整理理解 [[Flow Matching理论与实践思维导图]] 所需的条件分布、边缘分布、概率路径和速度场概念。“边缘”是 marginal 的翻译，表示对其他变量求和或积分，并不是空间边界。
 
 ## 1. 联合、条件与边缘分布
 
