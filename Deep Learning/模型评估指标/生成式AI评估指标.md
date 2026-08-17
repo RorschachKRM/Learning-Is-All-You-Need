@@ -2,6 +2,8 @@
 title: Generative AI Evaluation Metrics
 tags:
   - Evaluation
+related:
+  - "[[FID指标]]"
 ---
 # FID (Fréchet Inception Distance)
 

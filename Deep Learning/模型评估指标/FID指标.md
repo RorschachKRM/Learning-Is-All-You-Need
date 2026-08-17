@@ -5,6 +5,7 @@ description: FID（Frechet Inception Distance）2017年提出：NIPS2017，论�
 tags:
   - clippings
   - FID
+related:
 ---
 ## FID（Frechet Inception Distance）
 
